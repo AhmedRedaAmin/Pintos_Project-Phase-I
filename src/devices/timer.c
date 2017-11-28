@@ -9,15 +9,6 @@
 #include "threads/thread.h"
 #include "lib/kernel/list.h"
 
-
-  struct sleeping_elem
-    {
-      struct list_elem elem;
-      int ticks ;
-      int start_time ;
-      struct thread* sleeper_thread;
-    } ;
-
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -104,19 +95,16 @@ timer_sleep (int64_t ticks)
   if(ticks <= 0)
     return;
   int64_t start = timer_ticks ();
-  struct sleeping_elem * temp_elem = malloc(sizeof(struct sleeping_elem)) ;
-  temp_elem->ticks = ticks;
-  temp_elem->start_time = start;
-  temp_elem->sleeper_thread = thread_current();
+  struct thread * temp_thread = malloc(sizeof(struct thread*)) ;
+  temp_thread = thread_current();
+  temp_thread->sleep_ticks = ticks;
   //  ASSERT (intr_get_level () == INTR_ON);
   // while (timer_elapsed (start) < ticks)
 
-  enum intr_level  previous  = intr_disable();
-  list_push_back(&sleeping_queue,&temp_elem->elem);
-
   /* thread_block() asserts the interrupts to be off
   so we have to set them manually before calling thread_block()*/
-
+  enum intr_level  previous  = intr_disable();
+  list_push_back(&sleeping_queue,&temp_thread->elem);
   thread_block();
   intr_set_level(previous);
 }
@@ -198,9 +186,8 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
   /////
-  enum intr_level previous = intr_disable();
+
   wake_up_sleepers();
-  intr_set_level(previous);
 
 }
 
@@ -210,19 +197,20 @@ timer_interrupt (struct intr_frame *args UNUSED)
   if(lSize < 1){
     return;
   }
-  struct sleeping_elem* temp ;
+  struct thread* temp ;
   struct list_elem* iterator;
   struct list_elem* toBeDestroyed ;
   iterator = list_front(&sleeping_queue);
   for(size_t z = 0 ; z < lSize ; z++)
   {
-    temp = list_entry(iterator,struct sleeping_elem,elem);
-  if(timer_elapsed(temp->start_time) >= temp->ticks){
-    list_push_back (&ready_list, &temp->sleeper_thread->elem);
-    temp->sleeper_thread->status = THREAD_READY;
+    temp = list_entry(iterator,struct thread,elem);
+    temp-> sleep_ticks -- ;
+  if(temp-> sleep_ticks <= 0 ){
+    list_push_back (&ready_list, &temp->elem);
+    temp->status = THREAD_READY;
     toBeDestroyed = iterator;
     list_remove(toBeDestroyed);
-    free(list_entry(iterator,struct sleeping_elem , elem ));
+    free(list_entry(iterator,struct thread , elem ));
     }
   iterator = list_next(iterator);
   }
