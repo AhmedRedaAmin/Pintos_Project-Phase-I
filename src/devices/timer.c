@@ -3,10 +3,10 @@
 #include <inttypes.h>
 #include <round.h>
 #include <stdio.h>
+#include "threads/malloc.h"
 #include "devices/pit.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
-#include "threads/thread.h"
 #include "lib/kernel/list.h"
 
 /* See [8254] for hardware details of the 8254 timer chip. */
@@ -25,6 +25,7 @@ static int64_t ticks;
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 static struct list sleeping_queue;
+static struct list priority_based_sleeping_queue;
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
@@ -94,8 +95,7 @@ timer_sleep (int64_t ticks)
   //logical check on ticks value
   if(ticks <= 0)
     return;
-  int64_t start = timer_ticks ();
-  struct thread * temp_thread = malloc(sizeof(struct thread*)) ;
+  struct thread *temp_thread;
   temp_thread = thread_current();
   temp_thread->sleep_ticks = ticks;
   //  ASSERT (intr_get_level () == INTR_ON);
@@ -187,32 +187,60 @@ timer_interrupt (struct intr_frame *args UNUSED)
   thread_tick ();
   /////
 
-  wake_up_sleepers();
+  wake_up_sleepers ();
 
 }
 
-  void wake_up_sleepers(){
+  void wake_up_sleepers(void){
   //safe check
   size_t lSize = list_size(&sleeping_queue);
+  // printf("size : %d \n",lSize);
   if(lSize < 1){
     return;
   }
   struct thread* temp ;
   struct list_elem* iterator;
-  struct list_elem* toBeDestroyed ;
   iterator = list_front(&sleeping_queue);
   for(size_t z = 0 ; z < lSize ; z++)
   {
     temp = list_entry(iterator,struct thread,elem);
     temp-> sleep_ticks -- ;
+    // printf("%s:%d\t",temp->name ,temp->sleep_ticks);
   if(temp-> sleep_ticks <= 0 ){
-    list_push_back (&ready_list, &temp->elem);
-    temp->status = THREAD_READY;
-    toBeDestroyed = iterator;
-    list_remove(toBeDestroyed);
-    free(list_entry(iterator,struct thread , elem ));
+    // printf("z : %d",z);
+    iterator = list_remove(iterator);
+    thread_unblock(temp);
+                              // priority_based_buffering(temp);
+    } else {
+      iterator = list_next(iterator);
     }
-  iterator = list_next(iterator);
+  }
+                                // priority_based_wakeup();
+}
+
+bool priority_comparator (const struct list_elem *a,const struct list_elem *b,void *aux){
+  struct thread *t1 = list_entry(a,struct thread , elem);
+  struct thread *t2 = list_entry(b,struct thread , elem);
+  if(t1->priority >= t2->priority)
+    return false;
+  return true;
+}
+
+void priority_based_buffering(struct thread* t){
+list_push_front(&priority_based_sleeping_queue,&t->elem);
+   }
+
+void priority_based_wakeup(void){
+  if(list_size(&priority_based_sleeping_queue) < 1)
+    return;
+  struct thread *temp ;
+  struct list_elem* iterator;
+  list_sort(&priority_based_sleeping_queue,&priority_comparator,NULL);
+size_t lSize = list_size(&priority_based_sleeping_queue);
+for(size_t z = 0 ; z < lSize ; z++){
+  iterator = list_pop_front(&priority_based_sleeping_queue);
+  temp = list_entry(iterator,struct thread,elem);
+  thread_unblock(temp);
   }
 }
 
