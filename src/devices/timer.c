@@ -217,7 +217,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
   }
                                 // priority_based_wakeup();
 }
-
+// Added as part of the priority effort
 bool priority_comparator (const struct list_elem *a,const struct list_elem *b,void *aux){
   struct thread *t1 = list_entry(a,struct thread , elem);
   struct thread *t2 = list_entry(b,struct thread , elem);
@@ -243,6 +243,8 @@ for(size_t z = 0 ; z < lSize ; z++){
   thread_unblock(temp);
   }
 }
+
+// final part of the priority effort
 
 /* Returns true if LOOPS iterations waits for more than one timer
    tick, otherwise false. */
