@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed-point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -72,7 +73,7 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 static bool max_comp(const struct list_elem *a,const struct list_elem *b,
                     void *aux);
-
+static int BSD_Scheduler_Calc_Priority(struct thread* x);
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -183,6 +184,9 @@ thread_create (const char *name, int priority,
     return TID_ERROR;
 
   /* Initialize thread. */
+  //-----------------------------------------
+  if(thread_mlfqs)
+    priority = BSD_Scheduler_Calc_Priority(t);
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
 
@@ -345,6 +349,9 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority)
 {
+  //--------------------------------------
+  if (thread_mlfqs)
+    return;
   thread_current ()->priority = new_priority;
 }
 
@@ -355,11 +362,40 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
+/* Calculates the BSD Scheduler priority values */
+static int BSD_Scheduler_Calc_Priority(struct thread* x)
+{
+  x->priority = PRI_MAX - (thread_get_recent_cpu() / 4) - (thread_get_nice()*2);
+  return x->priority;
+}
+/* Calculates the BSD Scheduler priority values
+   for all threads in ready list  */
+void BSD_Scheduler_Calc_Priority_All(void)
+{  struct list_elem *element_A ;
+   struct thread *thread_A;
+  for(int i = 0 ; i < list_size(&ready_list) ; i ++){
+    if(i == 0){
+      element_A = list_front(&ready_list);
+    } else {
+      element_A = list_next(element_A);
+    }
+    thread_A = list_entry(element_A,struct thread,elem);
+    BSD_Scheduler_Calc_Priority(thread_A);
+  }
+}
+
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED)
+thread_set_nice (int nice)
 {
   /* Not yet implemented. */
+  struct thread *temp = thread_current();
+  struct thread *temp_max;
+  temp->nice = nice;
+  //BSD_Scheduler_Calc_Priority();
+  temp_max = list_entry(list_max(&ready_list,max_comp,NULL),struct thread,elem);
+  if(temp->priority < temp_max->priority)
+    thread_yield();
 }
 
 /* Returns the current thread's nice value. */
@@ -367,7 +403,8 @@ int
 thread_get_nice (void)
 {
   /* Not yet implemented. */
-  return 0;
+  struct thread *temp = thread_current();
+  return temp->nice;
 }
 
 /* Returns 100 times the system load average. */
@@ -506,6 +543,9 @@ next_thread_to_run (void)
     return idle_thread;
   struct list_elem *max;
  if (thread_mlfqs){
+//----------------------------------------------------
+
+
       //4.4BSD Scheduler  #3
   }
   else {
@@ -516,6 +556,7 @@ next_thread_to_run (void)
   return list_entry (temp, struct thread, elem);
 }
 
+/* Comparator for ordering threads according to highest priority */
 static bool max_comp(const struct list_elem *a,const struct list_elem *b,
                     void *aux)
 {

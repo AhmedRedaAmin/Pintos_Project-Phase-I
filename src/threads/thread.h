@@ -83,6 +83,7 @@ typedef int tid_t;
 struct thread
   {
     /* Owned by thread.c. */
+    int nice;
     int sleep_ticks;
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
@@ -133,6 +134,7 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+void BSD_Scheduler_Calc_Priority_All(void);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
