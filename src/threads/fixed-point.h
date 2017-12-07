@@ -1,12 +1,16 @@
-#ifndef THREADS_FIXED-POINT_H
-#define THREADS_FIXED-POINT_H
+#ifndef THREADS_FIXED_POINT_H
+#define THREADS_FIXED_POINT_H
 
+struct fixed_point
+{
+    int64_t value;
+};
 /* Macro Definitions for fixed point arithmetic , a more clean and
    readable way of carrying out this type of operations. */
 
 
 // fixed point region , fixed point variable f
-#define F_P 2**14
+#define F_P 16384
 // convert integer to fixed point simulation - return @fixed
 #define TO_FIX(n) (n*F_P)
 // Round down fixed point - return @integer
@@ -31,8 +35,5 @@
 #define DIV_FIX(x,y) (((int64_t) x) * F_P / y)
 // Divide a fixed point number by an integer - return @fixed
 #define DIV_FIX_INT(x,n) (x/n)
-
-
-
 
 #endif /* threads/fixed-point.h */

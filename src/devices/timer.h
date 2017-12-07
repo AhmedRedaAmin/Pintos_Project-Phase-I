@@ -20,8 +20,6 @@ void timer_msleep (int64_t milliseconds);
 void timer_usleep (int64_t microseconds);
 void timer_nsleep (int64_t nanoseconds);
 void wake_up_sleepers(void);// wakes up sleeping threads whose time is out
-void priority_based_buffering(struct thread* t); //buffers the sleeping threads whose time is out
-void priority_based_wakeup(void); // pops the waking up threads from their buffer in order according to priority
 
 /* Busy waits. */
 void timer_mdelay (int64_t milliseconds);

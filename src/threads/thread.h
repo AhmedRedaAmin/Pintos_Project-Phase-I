@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/fixed-point.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -84,6 +85,7 @@ struct thread
   {
     /* Owned by thread.c. */
     int nice;
+    struct fixed_point recent_cpu;
     int sleep_ticks;
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
@@ -127,6 +129,7 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+bool is_idle(void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
@@ -134,11 +137,12 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
-void BSD_Scheduler_Calc_Priority_All(void);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
+void inc_rec_cpu_cur_thread(void);
+void update_recent_cpu(void);
 int thread_get_recent_cpu (void);
+void update_load_avg(void);
 int thread_get_load_avg (void);
-
 #endif /* threads/thread.h */

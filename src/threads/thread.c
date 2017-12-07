@@ -11,7 +11,6 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
-#include "threads/fixed-point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -24,6 +23,9 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+
+/* The system load average variable */
+static struct fixed_point load_avg;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -74,6 +76,7 @@ static tid_t allocate_tid (void);
 static bool max_comp(const struct list_elem *a,const struct list_elem *b,
                     void *aux);
 static int BSD_Scheduler_Calc_Priority(struct thread* x);
+static void update_individual_recent_cpu(struct thread* thd,void * x);
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -101,6 +104,7 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  load_avg.value = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -189,6 +193,7 @@ thread_create (const char *name, int priority,
     priority = BSD_Scheduler_Calc_Priority(t);
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+  t->recent_cpu.value = 0;
 
   /* Prepare thread for first run by initializing its stack.
      Do this atomically so intermediate values for the 'stack'
@@ -231,6 +236,7 @@ thread_block (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   thread_current ()->status = THREAD_BLOCKED;
+
   schedule ();
 }
 
@@ -365,23 +371,11 @@ thread_get_priority (void)
 /* Calculates the BSD Scheduler priority values */
 static int BSD_Scheduler_Calc_Priority(struct thread* x)
 {
-  x->priority = PRI_MAX - (thread_get_recent_cpu() / 4) - (thread_get_nice()*2);
+  struct fixed_point temp_variable;
+  temp_variable.value = SUB_FIX_INT(DIV_FIX_INT(x->recent_cpu.value,4) , (x->nice * 2));
+  temp_variable.value = SUB_FIX(TO_FIX(PRI_MAX),temp_variable.value);
+  x->priority = ROUND_D(temp_variable.value) ;
   return x->priority;
-}
-/* Calculates the BSD Scheduler priority values
-   for all threads in ready list  */
-void BSD_Scheduler_Calc_Priority_All(void)
-{  struct list_elem *element_A ;
-   struct thread *thread_A;
-  for(int i = 0 ; i < list_size(&ready_list) ; i ++){
-    if(i == 0){
-      element_A = list_front(&ready_list);
-    } else {
-      element_A = list_next(element_A);
-    }
-    thread_A = list_entry(element_A,struct thread,elem);
-    BSD_Scheduler_Calc_Priority(thread_A);
-  }
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -407,20 +401,79 @@ thread_get_nice (void)
   return temp->nice;
 }
 
+/* Updates load_avg every 200 ticks */
+void update_load_avg(void){
+ struct fixed_point coeff_1,coeff_2;
+ coeff_1.value = TO_FIX(59)/60;
+ coeff_2.value = TO_FIX(1)/60;
+ int aux = (int) (!is_idle());
+ load_avg.value =  MUL_FIX(coeff_1.value,load_avg.value) +
+                    MUL_FIX_INT(coeff_2.value,(list_size(&ready_list))+aux);
+}
+
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void)
-{
+{ struct fixed_point temp = load_avg;
+  temp.value *= 100;
   /* Not yet implemented. */
-  return 0;
+  return ROUND_N_POS(temp.value);
+}
+
+/* Increments running thread by 1 recent_cpu every interrupt */
+void inc_rec_cpu_cur_thread(void){
+if(is_idle())
+  return;
+struct thread * temp ;
+temp = thread_current();
+temp->recent_cpu.value ++ ;
+}
+
+/* Updates recent_cpu for all threads every 200 seconds */
+void update_recent_cpu(void){
+  struct list_elem* temp_elem ;
+  struct thread* temp_thread ;
+  thread_foreach(update_individual_recent_cpu,NULL);
+  // temp_elem = list_size(&ready_list) > 0 ? list_begin(&ready_list):NULL;
+  // for(unsigned int i = 1 ; i < list_size(&ready_list) ; i++){
+  //   temp_thread = list_entry(temp_elem , struct thread , elem ) ;
+  //   update_individual_recent_cpu(temp_thread);
+  //   temp_elem = list_next(&temp_elem);
+  // }
+  // temp_elem = list_size(&blocked_list) > 0 ? list_begin(&blocked_list):NULL;
+  // for(unsigned int i = 1   ; i < list_size(&blocked_list) ; i++){
+  //   temp_thread = list_entry(temp_elem , struct thread , elem ) ;
+  //   update_individual_recent_cpu(temp_thread);
+  //   temp_elem = list_next(&temp_elem);
+  // }
+  // if(!is_idle()){
+  //   temp_thread = thread_current() ;
+  //   update_individual_recent_cpu(temp_thread);
+  // }
+}
+
+/*
+
+/* Updates recent_cpu for an individual thread */
+static void update_individual_recent_cpu(struct thread* thd,void * x){
+  if(thd->status == THREAD_DYING || thd == idle_thread)
+    return;
+  struct fixed_point load = load_avg;
+  struct fixed_point recent_cpu =  thd->recent_cpu ;
+  recent_cpu.value = MUL_FIX(DIV_FIX((MUL_FIX_INT(load.value,2)),
+                       (MUL_FIX_INT(load.value,2)+1))
+                       ,recent_cpu.value) + thread_get_nice();
+  thd->recent_cpu = recent_cpu;
+  BSD_Scheduler_Calc_Priority(thd);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void)
-{
+{ struct fixed_point recent_cpu =  thread_current()->recent_cpu ;
+  recent_cpu.value *= 100;
   /* Not yet implemented. */
-  return 0;
+  return ROUND_N_POS(recent_cpu.value);
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -646,6 +699,10 @@ allocate_tid (void)
   lock_release (&tid_lock);
 
   return tid;
+}
+/* Identifies whether or not this is the idel thread */
+bool is_idle(){
+  return thread_current() == idle_thread ;
 }
 
 /* Offset of `stack' member within `struct thread'.
