@@ -4,7 +4,6 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "threads/fixed-point.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -84,8 +83,6 @@ typedef int tid_t;
 struct thread
   {
     /* Owned by thread.c. */
-    int nice;
-    struct fixed_point recent_cpu;
     int sleep_ticks;
     tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
@@ -93,6 +90,11 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
+    //////////////////////
+    int old_priority;                    /* save the orignal priority to get it back after release the lock */
+    struct lock *locks[8];                  /* list of the locks that this thread wait for them */
+    struct lock *wlocks[8]; 
+    /////////////////////////
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
@@ -129,20 +131,24 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
-bool is_idle(void);
 
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
+//////////////////////////////////////////////////////////
+bool less_priority( struct list_elem *a,  struct list_elem *b, void *aux);
+bool max_priority( struct list_elem *a,  struct list_elem *b, void *aux);
+bool less_priority_lock(struct list_elem *a,  struct list_elem *b, void *aux);
+bool max_priority_lock(struct list_elem *a,  struct list_elem *b, void *aux);
+void try_to_yield_cpu(void);
+///////////////////////////////////
 int thread_get_priority (void);
 void thread_set_priority (int);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
-void inc_rec_cpu_cur_thread(void);
-void update_recent_cpu(void);
 int thread_get_recent_cpu (void);
-void update_load_avg(void);
 int thread_get_load_avg (void);
+
 #endif /* threads/thread.h */
