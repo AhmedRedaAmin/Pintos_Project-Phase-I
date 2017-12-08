@@ -1,4 +1,5 @@
 #include "devices/timer.h"
+#include "threads/fixed-point.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -25,6 +26,7 @@ static int64_t ticks;
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 static struct list sleeping_queue;
+static struct list priority_based_sleeping_queue;
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
@@ -91,14 +93,13 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks)
 {
+  ////////////////////--------our implemention-------///////////////////////////////
   //logical check on ticks value
   if(ticks <= 0)
     return;
   struct thread *temp_thread;
   temp_thread = thread_current();
   temp_thread->sleep_ticks = ticks;
-  //  ASSERT (intr_get_level () == INTR_ON);
-  // while (timer_elapsed (start) < ticks)
 
   /* thread_block() asserts the interrupts to be off
   so we have to set them manually before calling thread_block()*/
@@ -106,6 +107,7 @@ timer_sleep (int64_t ticks)
   list_push_back(&sleeping_queue,&temp_thread->elem);
   thread_block();
   intr_set_level(previous);
+  ////////////////////--------our implemention-------///////////////////////////////
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -183,26 +185,33 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
-  /////
-  // inc_rec_cpu_cur_thread();
-  // if(thread_mlfqs && timer_ticks() % TIMER_FREQ == 0)
-  //   {
-  //     update_load_avg();
-  //     update_recent_cpu();
-  //   }
-  // ///////
   thread_tick ();
+  ////////////////////--------our implemention-------///////////////////////////////
+  if (thread_mlfqs)
+  {
+    thread_current ()->recent_cpu = INT_ADD (thread_current ()->recent_cpu, 1);
+    if (ticks % TIMER_FREQ == 0) /* do this every second */
+      {
+        thread_calculate_load_avg ();
+        thread_calculate_recent_cpu_for_all ();
+      }
+    if (ticks % 4 == 0)
+      thread_calculate_priority_for_all ();
+  }
+  // wake up all sleep that completed the their sleep time.
   wake_up_sleepers ();
+  ////////////////////--------our implemention-------///////////////////////////////
 
 }
 
-  void wake_up_sleepers(void){
+////////////////////--------our implemention-------///////////////////////////////
+void wake_up_sleepers(void){
   //safe check
   size_t lSize = list_size(&sleeping_queue);
-  // printf("size : %d \n",lSize);
   if(lSize < 1){
     return;
   }
+  //printf("##size : %d \n",lSize);
   struct thread* temp ;
   struct list_elem* iterator;
   iterator = list_front(&sleeping_queue);
@@ -215,11 +224,42 @@ timer_interrupt (struct intr_frame *args UNUSED)
     // printf("z : %d",z);
     iterator = list_remove(iterator);
     thread_unblock(temp);
+                              // priority_based_buffering(temp);
     } else {
       iterator = list_next(iterator);
     }
   }
+  return;
+                                // priority_based_wakeup();
 }
+// Added as part of the priority effort
+bool priority_comparator (const struct list_elem *a,const struct list_elem *b,void *aux){
+  struct thread *t1 = list_entry(a,struct thread , elem);
+  struct thread *t2 = list_entry(b,struct thread , elem);
+  if(t1->priority >= t2->priority)
+    return false;
+  return true;
+}
+////////////////////--------our implemention-------///////////////////////////////
+void priority_based_buffering(struct thread* t){
+  list_push_front(&priority_based_sleeping_queue,&t->elem);
+  }
+
+void priority_based_wakeup(void){
+  if(list_size(&priority_based_sleeping_queue) < 1)
+    return;
+  struct thread *temp ;
+  struct list_elem* iterator;
+  list_sort(&priority_based_sleeping_queue,&priority_comparator,NULL);
+size_t lSize = list_size(&priority_based_sleeping_queue);
+for(size_t z = 0 ; z < lSize ; z++){
+  iterator = list_pop_front(&priority_based_sleeping_queue);
+  temp = list_entry(iterator,struct thread,elem);
+  thread_unblock(temp);
+  }
+}
+
+// final part of the priority effort
 
 /* Returns true if LOOPS iterations waits for more than one timer
    tick, otherwise false. */

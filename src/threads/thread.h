@@ -24,6 +24,11 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+/* nice priopirties */
+#define NICE_MAX 20
+#define NICE_DEFAULT 0
+#define NICE_MIN -20
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -90,12 +95,13 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-    //////////////////////
+    ////////////////////--------our implemention-------///////////////////////////////
     int old_priority;                    /* save the orignal priority to get it back after release the lock */
     struct lock *locks[8];                  /* list of the locks that this thread wait for them */
     struct lock *wlocks[8]; 
-    /////////////////////////
-
+    int nice;                           /* nice value */
+    int recent_cpu;                     /* recent cpu usage */
+    ////////////////////--------our implemention-------///////////////////////////////
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
@@ -136,13 +142,14 @@ void thread_yield (void);
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
 
-//////////////////////////////////////////////////////////
+////////////////////--------our implemention-------///////////////////////////////
 bool less_priority( struct list_elem *a,  struct list_elem *b, void *aux);
 bool max_priority( struct list_elem *a,  struct list_elem *b, void *aux);
 bool less_priority_lock(struct list_elem *a,  struct list_elem *b, void *aux);
 bool max_priority_lock(struct list_elem *a,  struct list_elem *b, void *aux);
 void try_to_yield_cpu(void);
-///////////////////////////////////
+////////////////////--------our implemention-------///////////////////////////////
+
 int thread_get_priority (void);
 void thread_set_priority (int);
 
@@ -151,4 +158,9 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+////////////////////--------our implemention-------///////////////////////////////
+void thread_calculate_load_avg (void);
+void thread_calculate_recent_cpu_for_all (void);
+void thread_calculate_priority_for_all (void);
+////////////////////--------our implemention-------///////////////////////////////
 #endif /* threads/thread.h */

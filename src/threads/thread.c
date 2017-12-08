@@ -1,4 +1,5 @@
 #include "threads/thread.h"
+#include "threads/fixed-point.h"
 #include <debug.h>
 #include <stddef.h>
 #include <random.h>
@@ -70,6 +71,11 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+////////////////////--------our implemention-------///////////////////////////////
+int load_avg;  
+static void thread_calculate_priority_thread (struct thread *curr);
+static void thread_calculate_recent_cpu_thread (struct thread *curr); 
+////////////////////--------our implemention-------///////////////////////////////
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -98,6 +104,9 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+
+  ////////////////////--------our implemention-------///////////////////////////////
+  load_avg = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -209,11 +218,14 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
-/////////////////////////////////////////////
- // old_level = intr_disable();
-  try_to_yield_cpu();
-  //intr_set_level(old_level);
-////////////////////////////////////////
+  ////////////////////--------our implemention-------///////////////////////////////
+   if (thread_mlfqs)
+    thread_calculate_priority_thread (t);
+
+  if (priority > thread_current()->priority)
+    try_to_yield_cpu();
+  ////////////////////--------our implemention-------///////////////////////////////
+
   return tid;
 }
 
@@ -250,10 +262,9 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  ////////////////////////////////////////////////////
-  //list_push_back (&ready_list, &t->elem);
+  ////////////////////--------our implemention-------///////////////////////////////
   list_insert_ordered(&ready_list, &t->elem, max_priority, NULL);
-  /////////////////////////////////////////////////////
+  ////////////////////--------our implemention-------///////////////////////////////
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -323,10 +334,10 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  //////////////////////////////////
+  ////////////////////--------our implemention-------///////////////////////////////
   if (cur != idle_thread) 
     list_insert_ordered(&ready_list, &cur->elem, max_priority, NULL);
-    ///list_push_back (&ready_list, &cur->elem);
+  ////////////////////--------our implemention-------///////////////////////////////
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -352,28 +363,12 @@ thread_foreach (thread_action_func *func, void *aux)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) 
-{
-  /////////////////////////////////////////////////
-  /*
-  int temp;
-  */
-  //temp = thread_current ()->priority;
-
-
-//thread_current () ->priority = new_priority;
- thread_current () ->old_priority = new_priority;
-fix_current_priority(thread_current());
-try_to_yield_cpu();
-
-
-/*
+{  
+////////////////////--------our implemention-------///////////////////////////////
+  thread_current () ->old_priority = new_priority;
   fix_current_priority(thread_current());
-  if (temp < thread_current()->priority)
-    donate(thread_current());
-  if (temp > thread_current ()->priority)
-    try_to_yield_cpu();
-  */
-  /////////////////////////////////////////////////
+  try_to_yield_cpu();
+////////////////////--------our implemention-------//////////////////////////////
 }
 
 /* Returns the current thread's priority. */
@@ -385,33 +380,36 @@ thread_get_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice) 
 {
-  /* Not yet implemented. */
+  ASSERT (nice >= NICE_MIN && nice <= NICE_MAX);
+  thread_current()->nice = nice;
+  thread_calculate_recent_cpu_thread (thread_current());
+  thread_calculate_priority_thread (thread_current());
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  ////////////////////--------our implemention-------///////////////////////////////
+  return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  ////////////////////--------our implemention-------///////////////////////////////
+  return CONVERT_TO_INT_NEAR (100 * load_avg);
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  ////////////////////--------our implemention-------///////////////////////////////
+  return  CONVERT_TO_INT_NEAR (100 * thread_current ()->recent_cpu);
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -498,10 +496,20 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
-  ///////////////////////////////
-  t->old_priority = priority;
+  ////////////////////--------our implemention-------///////////////////////////////
+  if (!thread_mlfqs)
+   t->old_priority = priority;
+  
   list_init(&t->locks);
-  ////////////////////////////////
+  if (thread_mlfqs)
+  {
+    t->nice = NICE_DEFAULT; /* NICE_DEFAULT should be zero */
+    if (t == initial_thread)
+      t->recent_cpu = 0;
+    else
+      t->recent_cpu = thread_get_recent_cpu ();
+  }
+  ////////////////////--------our implemention-------///////////////////////////////
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
@@ -529,18 +537,7 @@ next_thread_to_run (void)
 {
   if (list_empty (&ready_list))
     return idle_thread;
-  struct list_elem *max;
-////////////////////
- if (thread_mlfqs){
-      //4.4BSD Scheduler  #3
-  }
-  else {
-    max = list_max(&ready_list,less_priority,NULL);
-  }
-  ///////////////////////
-  struct list_elem* temp = max;
-  list_remove(max);
-  return list_entry (temp, struct thread, elem);
+  return list_entry (list_pop_front (&ready_list), struct thread, elem);
 }
 
 /* Completes a thread switch by activating the new thread's page
@@ -688,6 +685,58 @@ int max=0,i;
     		th->priority = max;
 	else
 		th->priority = th->old_priority ;
+}
+
+/* calculate the load average */
+void thread_calculate_load_avg(void)
+{
+  int aux = (int) (thread_current() != idle_thread);
+  int ready_thread_cnt = aux + list_size(&ready_list);
+  load_avg = FP_MUL (CONVERT_TO_FP (59) / 60, load_avg) + CONVERT_TO_FP (1) / 60 * ready_thread_cnt;
+} 
+
+void thread_calculate_recent_cpu_thread (struct thread *th)
+{
+  if (!is_thread(th) || th == idle_thread)
+      return;
+  int lad = 2 * load_avg;
+  th->recent_cpu = INT_ADD (FP_MUL (FP_DIV (lad, INT_ADD (lad, 1)), th->recent_cpu), th->nice);
+}
+
+void thread_calculate_recent_cpu_for_all (void)
+{ 
+  struct list_elem *e;
+  struct thread *th;
+  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)){
+    th = list_entry(e, struct thread, allelem);
+    thread_calculate_recent_cpu_thread(th);
+  }
+}
+
+void thread_calculate_priority_thread(struct thread *th)
+{
+  if (!is_thread(th) || th == idle_thread)
+      return;
+
+  th->priority = PRI_MAX - CONVERT_TO_INT_NEAR(th->recent_cpu / 4) - th->nice * 2;
+  /* check max >= pr <= min */
+  if (th->priority > PRI_MAX)
+    th->priority = PRI_MAX;
+  else if (th->priority < PRI_MIN)
+    th->priority = PRI_MIN;
+
+}
+
+void thread_calculate_priority_for_all (void)
+{
+  struct list_elem *e;
+  struct thread *th;
+  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)){
+    th = list_entry(e, struct thread, allelem);
+    thread_calculate_priority_thread(th);
+  }
+  list_sort(&ready_list, max_priority, NULL);
+
 }
 
 ////////////////////--------our implemention-------///////////////////////////////

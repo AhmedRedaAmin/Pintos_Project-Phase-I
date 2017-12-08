@@ -1,39 +1,23 @@
+ 
 #ifndef THREADS_FIXED_POINT_H
 #define THREADS_FIXED_POINT_H
 
-struct fixed_point
-{
-    int64_t value;
-};
-/* Macro Definitions for fixed point arithmetic , a more clean and
-   readable way of carrying out this type of operations. */
+#define fp_t int
+#define P 17
+#define Q 14
+#define FRACTION 1<<(Q)
 
+#if P + Q != 31
+#error "FATAL ERROR: P + Q != 31."
+#endif
 
-// fixed point region , fixed point variable f
-#define F_P 16384
-// convert integer to fixed point simulation - return @fixed
-#define TO_FIX(n) (n*F_P)
-// Round down fixed point - return @integer
-#define ROUND_D(x) (x/F_P)
-// Round nearest fixed point(+ve) - return @integer
-#define ROUND_N_POS(x) ((x+(F_P/2))/F_P)
-// Round nearest fixed point(-ve) - return @integer
-#define ROUND_N_NEG(x) ((x-(F_P/2))/F_P)
-// Adds 2 fixed point numbers  - return @fixed
-#define ADD_FIX(x,y) (x+y)
-// Subs 2 fixed point numbers - return @fixed
-#define SUB_FIX(x,y) (x-y)
-// Adds a fixed point and an integer - return @fixed
-#define ADD_FIX_INT(x,n) (x+ n*F_P)
-// Subtract a fixed point and an integer - return @fixed
-#define SUB_FIX_INT(x,n) (x- n*F_P)
-// Multiply 2 fixed point numbers - return @fixed
-#define MUL_FIX(x,y) (((int64_t)x)*y/F_P)
-// Multiply a fixed point number and an integer - return @fixed
-#define MUL_FIX_INT(x,n) (x*n)
-// Divide 2 fixed point numbers - return @fixed
-#define DIV_FIX(x,y) (((int64_t) x) * F_P / y)
-// Divide a fixed point number by an integer - return @fixed
-#define DIV_FIX_INT(x,n) (x/n)
+#define INT_ADD(x, n) (x) + (n) * (FRACTION)
+#define INT_SUB(x, n) (x) - (n) * (FRACTION)
+#define CONVERT_TO_FP(x) (x) * (FRACTION)
+#define CONVERT_TO_INT_ZERO(x) (x) / (FRACTION)
+#define CONVERT_TO_INT_NEAR(x) ((x) >= 0 ? ((x) + (FRACTION) / 2) / (FRACTION) : ((x) - (FRACTION) / 2) / (FRACTION))
+#define FP_MUL(x, y) ((int64_t)(x)) * (y) / (FRACTION)
+#define FP_DIV(x, y) ((int64_t)(x)) * (FRACTION) / (y)
+
 
 #endif /* threads/fixed-point.h */
