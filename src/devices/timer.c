@@ -224,42 +224,14 @@ void wake_up_sleepers(void){
     // printf("z : %d",z);
     iterator = list_remove(iterator);
     thread_unblock(temp);
-                              // priority_based_buffering(temp);
     } else {
       iterator = list_next(iterator);
     }
   }
   return;
-                                // priority_based_wakeup();
 }
-// Added as part of the priority effort
-bool priority_comparator (const struct list_elem *a,const struct list_elem *b,void *aux){
-  struct thread *t1 = list_entry(a,struct thread , elem);
-  struct thread *t2 = list_entry(b,struct thread , elem);
-  if(t1->priority >= t2->priority)
-    return false;
-  return true;
-}
+
 ////////////////////--------our implemention-------///////////////////////////////
-void priority_based_buffering(struct thread* t){
-  list_push_front(&priority_based_sleeping_queue,&t->elem);
-  }
-
-void priority_based_wakeup(void){
-  if(list_size(&priority_based_sleeping_queue) < 1)
-    return;
-  struct thread *temp ;
-  struct list_elem* iterator;
-  list_sort(&priority_based_sleeping_queue,&priority_comparator,NULL);
-size_t lSize = list_size(&priority_based_sleeping_queue);
-for(size_t z = 0 ; z < lSize ; z++){
-  iterator = list_pop_front(&priority_based_sleeping_queue);
-  temp = list_entry(iterator,struct thread,elem);
-  thread_unblock(temp);
-  }
-}
-
-// final part of the priority effort
 
 /* Returns true if LOOPS iterations waits for more than one timer
    tick, otherwise false. */
